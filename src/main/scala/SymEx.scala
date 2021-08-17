@@ -1,34 +1,36 @@
-
-
-/**
- * Extremely simple symbolic execution engine.
- */
-class SymEx(encoder : ExprEncoder, spawnSMT : => SMT) {
+/** Extremely simple symbolic execution engine.
+  */
+class SymEx(encoder: ExprEncoder, spawnSMT: => SMT) {
 
   val smt = spawnSMT
 
   import encoder._
   import Program._
-  import PType.PInt
+  import PType.{PInt, PArray}
   import smt._
 
-  def shutdown = smt.shutdown
+  def shutdown() = smt.shutdown()
 
   smt.logCommands(false)
 
-  def exec(p : Prog, variables : Seq[Var], depth : Int = Integer.MAX_VALUE) = {
-    for (v@Var(name, PInt) <- variables)
-      declareConst(name, IntType)
-    val store =
-      (for (v@Var(name, PInt) <- variables) yield (v -> name)).toMap
-
+  def exec(p: Prog, variables: Seq[Var], depth: Int = Integer.MAX_VALUE) = {
+    for (Var(name, varType) <- variables) {
+      declareConst(
+        name,
+        varType match {
+          case PInt   => IntType
+          case PArray => ArrayType
+        }
+      )
+    }
+    val store = variables.map(v => v -> v.name).toMap
     execHelp(p, List(), depth)(store)
-
-    reset
+    reset()
   }
 
-  def execHelp(p : Prog, ops : List[Prog], depth : Int)
-              (implicit store : SymbStore) : Unit = p match {
+  def execHelp(p: Prog, ops: List[Prog], depth: Int)(implicit
+      store: SymbStore
+  ): Unit = p match {
 
     case _ if ops.size > depth => ()
 
@@ -40,41 +42,55 @@ class SymEx(encoder : ExprEncoder, spawnSMT : => SMT) {
     case Sequence(Sequence(p1, p2), p3) =>
       execHelp(Sequence(p1, Sequence(p2, p3)), ops, depth)
 
-    case Sequence(op@Assign(lhs : Var, rhs), rest) => {
+    case Sequence(op @ Assign(lhs: Var, rhs), rest) => {
       val newConst = freshConst(IntType)
       addAssertion("(= " + newConst + " " + encode(rhs) + ")")
       val newStore = store + (lhs -> newConst)
       execHelp(rest, op :: ops, depth)(newStore)
     }
 
+    case Sequence(op @ Assign(lhs: ArrayElement, rhs), rest) => {
+      val updatedArray = freshConst(ArrayType)
+      val assignedVar = Var(lhs.name, PType.PArray)
+      addAssertion(
+        s"(= ${updatedArray} (store ${store(assignedVar)} ${encode(lhs.atIndex)} ${encode(rhs)}))"
+      )
+      execHelp(rest, op :: ops, depth)(
+        store.updated(assignedVar, updatedArray)
+      )
+    }
+
     case Sequence(IfThenElse(cond, b1, b2), rest) => {
       val condStr = encode(cond)
-      push
+      push()
       addAssertion(condStr)
       val trueBranchSat = isSat
       if (trueBranchSat)
         execHelp(Sequence(b1, rest), ops, depth)
-      pop
-      push
+      pop()
+      push()
       addAssertion("(not " + condStr + ")")
       if (!trueBranchSat || isSat)
         execHelp(Sequence(b2, rest), ops, depth)
-      pop
+      pop()
     }
 
-    case Sequence(w@While(cond, body), rest) =>
-      execHelp(Sequence(IfThenElse(!cond, Skip, Sequence(body, w)), rest),
-               ops, depth)
+    case Sequence(w @ While(cond, body), rest) =>
+      execHelp(
+        Sequence(IfThenElse(!cond, Skip, Sequence(body, w)), rest),
+        ops,
+        depth
+      )
 
-    case Sequence(a@Assert(cond), rest) => {
-      push
+    case Sequence(a @ Assert(cond), rest) => {
+      push()
       addAssertion(encode(!cond))
       if (isSat) {
         println("Found path leading to failing assertion:")
         for (op <- (a :: ops).reverse)
           println("  " + op)
       }
-      pop
+      pop()
       execHelp(rest, ops, depth)
     }
 
@@ -84,7 +100,6 @@ class SymEx(encoder : ExprEncoder, spawnSMT : => SMT) {
   }
 
 }
-
 
 object SymExTest extends App {
 

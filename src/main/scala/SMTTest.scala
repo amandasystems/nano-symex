@@ -1,20 +1,22 @@
-
-
 object SMTTest extends App {
 
-  for (smt <- List(new PrincessSMT, new Z3SMT))
-  try {
-    import smt._
-    println("Testing SMT solver " + name + " ...")
+  for (smt <- List(new Z3SMT))
+    try {
+      import smt._
+      println("Testing SMT solver " + name + " ...")
 
-    declareConst("x", "Int")
-    declareConst("y", "Int")
+      declareConst("x", "Int")
+      declareConst("y", "Int")
 
-    addAssertion("(> x y)")
-    println(isSat)
+      addAssertion("(> x y)")
 
-  } finally {
-    smt.shutdown
-  }
+      declareConst("a", "(Array Int Int)")
+      addAssertion("(= (select a 1) 17)")
+      println(isSat)
+      println(getArrayValues("a"))
+
+    } finally {
+      smt.shutdown()
+    }
 
 }

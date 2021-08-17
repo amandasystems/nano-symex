@@ -1,51 +1,52 @@
-/**
- * Extremely simple dynamic symbolic execution engine.
- */
-class DSE(encoder : ExprEncoder, spawnSMT : => SMT) {
+/** Extremely simple dynamic symbolic execution engine.
+  */
+class DSE(encoder: ExprEncoder, spawnSMT: => SMT) {
 
   val smt = spawnSMT
 
   import encoder._
   import Program._
-  import PType.{PInt, PArray}
+  import PType.{PInt}
   import smt._
-  import SMT._
   import scala.collection.mutable.Queue
 
   val valQueue = Queue[(Valuation, Int)]()
 
-  def shutdown = smt.shutdown
+  def shutdown() = smt.shutdown()
 
   smt.logCommands(false)
 
-  def exec(p : Prog, variables : Seq[Var], depth : Int = Integer.MAX_VALUE) = {
-      
+  def exec(p: Prog, variables: Seq[Var]) = {
+
     val firsttest =
-      (for (v@Var(name, PInt) <- variables) yield (v -> BigInt(0))).toMap
+      (for (v @ Var(name, PInt) <- variables) yield (v -> BigInt(0))).toMap
     val initstore =
-      (for (v@Var(name, PInt) <- variables) yield (v -> name)).toMap
+      (for (v @ Var(name, PInt) <- variables) yield (v -> name)).toMap
 
-    valQueue.clear
+    valQueue.clear()
 
-    valQueue.enqueue((firsttest,0))
+    valQueue.enqueue((firsttest, 0))
 
     println("First test case" + firsttest)
 
     while (!valQueue.isEmpty) {
-      val (test,bl) = valQueue.dequeue
+      val (test, bl) = valQueue.dequeue()
       println("now starting" + test + "level" + bl)
-      for (v@Var(name, PInt) <- variables)
+      for (Var(name, PInt) <- variables)
         declareConst(name, IntType)
       execHelp(p, variables, test, bl, 0)(initstore)
-      reset
+      reset()
     }
 
   }
 
-  def execHelp(p : Prog, variables : Seq[Var],
-               valuation : Valuation,
-               bl : Int, curl: Int)
-              (implicit store : SymbStore) : Unit = p match {
+  def execHelp(
+      p: Prog,
+      variables: Seq[Var],
+      valuation: Valuation,
+      bl: Int,
+      curl: Int
+  )(implicit store: SymbStore): Unit = p match {
 
     case Skip => ()
 
@@ -55,9 +56,9 @@ class DSE(encoder : ExprEncoder, spawnSMT : => SMT) {
     case Sequence(Sequence(p1, p2), p3) =>
       execHelp(Sequence(p1, Sequence(p2, p3)), variables, valuation, bl, curl)
 
-    case Sequence(op@Assign(lhs : Var, rhs), rest) => {
+    case Sequence(Assign(lhs: Var, rhs), rest) => {
       val newConst = freshConst(IntType)
-      val newValuation = valuation + (lhs -> eval(rhs,valuation))
+      val newValuation = valuation + (lhs -> eval(rhs, valuation))
       addAssertion("(= " + newConst + " " + encode(rhs) + ")")
       val newStore = store + (lhs -> newConst)
       execHelp(rest, variables, newValuation, bl, curl)(newStore)
@@ -67,53 +68,58 @@ class DSE(encoder : ExprEncoder, spawnSMT : => SMT) {
       println("level " + curl)
       if (eval(cond, valuation)) {
         if (bl <= curl) {
-  	  push
-          addAssertion(encode(Not(cond))) ;
+          push()
+          addAssertion(encode(Not(cond)));
           if (isSat) {
             val newtest =
-              (for (v@Var(name, PInt) <- variables)
-               yield (v -> getSatValue(name))).toMap
+              (for (v @ Var(name, PInt) <- variables)
+                yield (v -> getSatValue(name))).toMap
             println("new test case" + newtest)
-            valQueue.enqueue((newtest,curl+1))
+            valQueue.enqueue((newtest, curl + 1))
           }
-          pop
-	}
-	addAssertion(encode(cond))
-        execHelp(Sequence(b1, rest), variables, valuation, bl, curl+1)
+          pop()
+        }
+        addAssertion(encode(cond))
+        execHelp(Sequence(b1, rest), variables, valuation, bl, curl + 1)
       } else {
-          println("level " + curl + " orig " + bl)
-          if (bl <= curl) {
-            push
-            addAssertion(encode(cond))
-            if (isSat) {
-              val newtest =
-                (for (v@Var(name, PInt) <- variables)
-                 yield (v -> getSatValue(name))).toMap
-              println("new test case" + newtest)
-              valQueue.enqueue((newtest,curl+1))
-            }
-	    pop
-	  }
-          addAssertion(encode(Not(cond)))
-          execHelp(Sequence(b2, rest), variables, valuation, bl, curl+1)
+        println("level " + curl + " orig " + bl)
+        if (bl <= curl) {
+          push()
+          addAssertion(encode(cond))
+          if (isSat) {
+            val newtest =
+              (for (v @ Var(name, PInt) <- variables)
+                yield (v -> getSatValue(name))).toMap
+            println("new test case" + newtest)
+            valQueue.enqueue((newtest, curl + 1))
+          }
+          pop()
+        }
+        addAssertion(encode(Not(cond)))
+        execHelp(Sequence(b2, rest), variables, valuation, bl, curl + 1)
       }
     }
 
-    case Sequence(w@While(cond, body), rest) =>
-      execHelp(Sequence(IfThenElse(!cond, Skip, Sequence(body, w)), rest),
-               variables, valuation, bl, curl)
+    case Sequence(w @ While(cond, body), rest) =>
+      execHelp(
+        Sequence(IfThenElse(!cond, Skip, Sequence(body, w)), rest),
+        variables,
+        valuation,
+        bl,
+        curl
+      )
 
-    case Sequence(a@Assert(cond), rest) => {    // Still to be fixed
-      push
+    case Sequence(Assert(cond), rest) => { // Still to be fixed
+      push()
       addAssertion(encode(!cond))
       if (isSat) {
         println("Found testcase leading to failing assertion:")
         val failtest =
-          (for (v@Var(name, PInt) <- variables)
-           yield (v -> getSatValue(name))).toMap
+          (for (v @ Var(name, PInt) <- variables)
+            yield (v -> getSatValue(name))).toMap
         println(failtest)
       }
-      pop
+      pop()
       execHelp(rest, variables, valuation, bl, curl)
     }
 
@@ -123,7 +129,6 @@ class DSE(encoder : ExprEncoder, spawnSMT : => SMT) {
   }
 
 }
-
 
 object DSETest extends App {
 
@@ -141,7 +146,7 @@ object DSETest2 extends App {
 
   val dse = new DSE(IntExprEncoder, new Z3SMT)
 
-  dse.exec(p, List(a, x), 200)
+  dse.exec(p, List(a, x))
 
 }
 

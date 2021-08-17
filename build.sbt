@@ -2,8 +2,22 @@ name := "nano-symex"
 
 version := "0.1"
 
-scalaVersion := "2.11.12"
+scalaVersion := "2.13.5"
 
-fork in run := true
+scalacOptions ++= Seq(
+    "-deprecation",
+    //"-Xfatal-warnings",
+    "-unchecked",
+    "-Xlint",
+    "-Xelide-below", "INFO",
+    "-feature",
+    "-opt-inline-from:**",
+    "-opt:l:method",
+    "-opt:l:inline",
+    "-Ywarn-dead-code",
+    "-Ywarn-unused"
+)
 
-cancelable in Global := true
+run / fork := true
+
+Global / cancelable := true
