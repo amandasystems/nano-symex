@@ -63,7 +63,9 @@ object Program {
   }
 
   case class Not(sub: BExpr) extends BExpr
-  case class And(left: BExpr, right: BExpr) extends BExpr
+  case class And(left: BExpr, right: BExpr) extends BExpr {
+    override def toString() = s"(${left} && ${right})"
+  }
   case class Or(left: BExpr, right: BExpr) extends BExpr
 
   //////////////////////////////////////////////////////////////////////////////
@@ -82,9 +84,15 @@ object Program {
     override def toString() = s"assert(${cond})"
   }
 
-  case class Sequence(left: Prog, right: Prog) extends Prog
+  case class Sequence(left: Prog, right: Prog) extends Prog {
+    override def toString() = s"${left}\n${right}"
+  }
   case class IfThenElse(cond: BExpr, b1: Prog, b2: Prog) extends Prog
-  case class While(cond: BExpr, body: Prog) extends Prog
+  case class While(cond: BExpr, body: Prog) extends Prog {
+    override def toString() = {
+      s"while ${cond} {\n${body}\n}"
+    }
+  }
 
   def Prog(stmts: Prog*): Prog =
     if (stmts.isEmpty)

@@ -61,6 +61,30 @@ abstract class SMT {
   /** Get the value of array named `name`.
     */
   def getArrayValues(name: String): Map[BigInt, BigInt]
+
+  def withSolverFrame[V](body: => V): V = {
+    push()
+    val returnValue = body
+    pop()
+    returnValue
+  }
+
+  def branch[A, B](left: => A)(right: => B): Unit = {
+    withSolverFrame(left)
+    withSolverFrame(right)
+  }
+
+  def branchWithCondition[A](
+      condition: String
+  )(left: => A)(right: => A): Unit = {
+    branch {
+      addAssertion(condition)
+      if (isSat) { left }
+    } {
+      addAssertion(s"(not ${condition})")
+      if (isSat) { right }
+    }
+  }
 }
 
 abstract class SMTProcess(cmd: Array[String]) extends SMT {

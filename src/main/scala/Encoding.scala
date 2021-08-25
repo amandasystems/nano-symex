@@ -5,11 +5,12 @@ abstract class ExprEncoder {
   import Program._
 
   val IntType: String
-  val ArrayType: String
 
   type Valuation = Map[Var, BigInt]
 
   type SymbStore = Map[Var, String]
+
+  type ArrayStore = Map[Var, Map[BigInt, String]]
 
   def encode(expr: Expr)(implicit store: SymbStore): String
 
@@ -29,15 +30,13 @@ object IntExprEncoder extends ExprEncoder {
   import Program._
 
   val IntType: String = "Int"
-  val ArrayType: String = "(Array Int Int)"
 
   def encode(expr: Expr)(implicit store: SymbStore): String = expr match {
     case v: Var      => store(v)
     case IntConst(v) => if (v >= 0) v.toString else ("(- " + -v + ")")
     case Plus(l, r)  => "(+ " + encode(l) + " " + encode(r) + ")"
     case Times(l, r) => "(* " + encode(l) + " " + encode(r) + ")"
-    case ArrayElement(name, atIndex) =>
-      s"(select ${store(Var(name, PType.PArray))} ${encode(atIndex)})"
+    case ArrayElement(name, atIndex) => ??? // Not needed!
   }
 
   def encode(expr: BExpr)(implicit store: SymbStore): String = expr match {
@@ -75,8 +74,6 @@ class BVExprEncoder(width: Int) extends ExprEncoder {
   import Program._
 
   val IntType: String = "(_ BitVec " + width + ")"
-  // FIXME should indices also be bitvecs
-  val ArrayType: String = s"(Array Int (_ BitVec  ${width}))"
 
   def encode(expr: Expr)(implicit store: SymbStore): String = expr match {
     case v: Var => store(v)
